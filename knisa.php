@@ -38,6 +38,9 @@ $C = [
     'body_extra'    => '',                 // <body> の最初に足すもの
     'header_links'  => [],                 // 右上のリンク [['文字', 'URL'], ...]
     'footer_extra'  => '',                 // フッターの最後の行（会社名など）
+    'pv_url'        => '',                 // 紹介動画（mp4）。空なら出さない
+    'pv_poster'     => '',
+    'pv_seconds'    => 0,
 ];
 if (is_file(__DIR__ . '/knisa-config.php')) {
     $over = include __DIR__ . '/knisa-config.php';
@@ -58,6 +61,10 @@ if (is_array($C['org_ld'])) { $APP['publisher'] = ['@id' => $C['org_ld']['@id'] 
 $LD = ['@context' => 'https://schema.org', '@graph' => array_values(array_filter([
   is_array($C['org_ld']) ? $C['org_ld'] : null,
   $APP,
+  $C['pv_url'] !== '' ? ['@type' => 'VideoObject', 'name' => 'NISA 枠計算・試算の紹介', 'inLanguage' => 'ja',
+    'description' => '新しいNISAの枠の残りと売った分の復活、積立の幅、対象商品の中身を計算する画面の紹介動画。',
+    'contentUrl' => $C['pv_url'], 'thumbnailUrl' => $C['pv_poster'], 'uploadDate' => '2026-09-27T20:00:00+09:00',
+    'duration' => 'PT' . (int) $C['pv_seconds'] . 'S'] : null,
   $FMETA ? ['@type' => 'Dataset', 'name' => 'つみたて投資枠の対象商品（連動する指数と地域の分類つき）', 'inLanguage' => 'ja',
             'description' => '金融庁「つみたて投資枠対象商品届出一覧（対象資産別）」を加工し、指数に連動する投資信託' . $FMETA['counts']['index'] . '本・アクティブ運用など' . $FMETA['counts']['active'] . '本・ETF' . $FMETA['counts']['etf'] . '本を、連動する指数と地域で分類したもの。',
             'dateModified' => $FMETA['as_of'], 'isBasedOn' => $FMETA['source']] : null,
@@ -143,6 +150,7 @@ svg{display:block;width:100%;height:auto;max-width:100%}
 .chk{display:flex;flex-wrap:wrap;gap:6px 14px;margin:8px 0}.chk label{font-size:14px;display:flex;gap:6px;align-items:center}
 .ovl{background:var(--accent-soft);border-radius:10px;padding:10px 12px;font-size:14px;margin:6px 0 0}
 .ovl li{margin:2px 0}
+.pv{display:block;width:100%;max-width:100%;height:auto;aspect-ratio:16/9;border-radius:12px;border:1px solid var(--line);background:#e9eef2;margin:18px 0 0}
 .cta{background:#f1f7f4;border:1px solid #cfe5dd;border-radius:12px;padding:18px;margin:18px 0}
 .cta a{color:var(--good);font-weight:700}
 footer{color:var(--sub);font-size:12.5px;border-top:1px solid var(--line);margin-top:30px;padding-block:22px 40px}
@@ -168,6 +176,9 @@ footer{color:var(--sub);font-size:12.5px;border-top:1px solid var(--line);margin
   </div>
 </div>
 
+<?php if ($C['pv_url'] !== '') { ?>
+<video class="pv" controls playsinline preload="none"<?= $C['pv_poster'] !== '' ? ' poster="' . h($C['pv_poster']) . '"' : '' ?> src="<?= h($C['pv_url']) ?>" aria-label="紹介動画"></video>
+<?php } ?>
 <section class="card" aria-labelledby="rules-h">
   <h2 id="rules-h">先に、枠のルール</h2>
   <div class="rules">
@@ -289,7 +300,9 @@ function calcW(){
 }
 $('addTx').onclick=()=>{const last=tbody.querySelector('tr:last-child input');row([last?+last.value:2026,'tsumitate','buy',10*M]);calcW();};
 $('exFull').onclick=()=>load(EX_FULL); $('exSame').onclick=()=>load(EX_SAME);
-load(EX_BASIC);
+// URLで例を選べる（?ex=full / ?ex=same）。紹介動画の撮影や、説明で「この状態」を見せるときに使う
+const Q = new URLSearchParams(location.search);
+load(Q.get('ex')==='full' ? EX_FULL : Q.get('ex')==='same' ? EX_SAME : EX_BASIC);
 
 function drawChart(res){
   const W=720,H=300,L=64,R=12,T=12,B=34, n=res.band.length-1;
@@ -360,6 +373,13 @@ if (F) {
     $('ovl').innerHTML = msgs.length ? '<ul style="margin:0;padding-left:1.1em">'+msgs.map(m=>`<li>${m}</li>`).join('')+'</ul><p style="margin:6px 0 0;font-size:13px;color:var(--sub)">重なっていること自体は悪いことではありません。意図して比重を上げているのか、知らずに二重に持っているのかを確かめるためのものです。</p>'
       : '選んだ指数どうしは、持っている地域が分かれています。';
   });
+  // ?fq=全世界 で検索、?ovl=S%26P500|MSCI%20ACWI%20Index で重なりを選んだ状態から始める
+  if (Q.get('fq')) { $('fq').value = Q.get('fq'); $('fq').dispatchEvent(new Event('input')); }
+  if (Q.get('ovl')) {
+    const want = Q.get('ovl').split('|');
+    $('chk').querySelectorAll('input').forEach(c=>{ c.checked = want.includes(c.value); });
+    $('chk').dispatchEvent(new Event('change'));
+  }
 }
 })();
 </script>

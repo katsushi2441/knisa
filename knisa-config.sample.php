@@ -20,6 +20,10 @@ return [
     // 計測タグを入れる場合（例: Google Analytics）。不要なら空のまま
     'head_extra'    => '',
     'body_extra'    => '',
+    // 紹介動画を題の下に出す場合（mp4 のURL・秒数）。不要なら空のまま
+    'pv_url'        => '',
+    'pv_poster'     => '',
+    'pv_seconds'    => 0,
     // 構造化データの発行者（任意）
     'org_ld'        => null,
 ];
