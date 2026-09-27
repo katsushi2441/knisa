@@ -12,6 +12,9 @@
  */
 date_default_timezone_set('Asia/Tokyo');
 $CORE = @file_get_contents(__DIR__ . '/knisa-core.js') ?: '';
+// 対象商品の一覧（scripts/build_funds.py が金融庁の Excel から作る）。無ければ 3. の節を出さない
+$FUNDS = @file_get_contents(__DIR__ . '/knisa-funds.json') ?: '';
+$FMETA = $FUNDS !== '' ? json_decode($FUNDS, true) : null;
 function h($s) { return htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8'); }
 
 /*
@@ -55,6 +58,9 @@ if (is_array($C['org_ld'])) { $APP['publisher'] = ['@id' => $C['org_ld']['@id'] 
 $LD = ['@context' => 'https://schema.org', '@graph' => array_values(array_filter([
   is_array($C['org_ld']) ? $C['org_ld'] : null,
   $APP,
+  $FMETA ? ['@type' => 'Dataset', 'name' => 'つみたて投資枠の対象商品（連動する指数と地域の分類つき）', 'inLanguage' => 'ja',
+            'description' => '金融庁「つみたて投資枠対象商品届出一覧（対象資産別）」を加工し、指数に連動する投資信託' . $FMETA['counts']['index'] . '本・アクティブ運用など' . $FMETA['counts']['active'] . '本・ETF' . $FMETA['counts']['etf'] . '本を、連動する指数と地域で分類したもの。',
+            'dateModified' => $FMETA['as_of'], 'isBasedOn' => $FMETA['source']] : null,
   ['@type' => 'FAQPage', 'mainEntity' => [
     ['@type' => 'Question', 'name' => 'NISAで売った分の枠は、いつ復活しますか。',
      'acceptedAnswer' => ['@type' => 'Answer', 'text' => '売った年の翌年以降に、売った商品の簿価（買ったときの金額）の分だけ非課税保有限度額（1,800万円）が復活します。売った年のうちには使えません。']],
@@ -127,6 +133,16 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
 svg{display:block;width:100%;height:auto;max-width:100%}
 .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;color:var(--sub);margin-top:6px}
 .legend i{display:inline-block;width:14px;height:10px;border-radius:2px;margin-right:5px;vertical-align:middle}
+.fsearch{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 10px}.fsearch input{flex:1 1 240px}
+.fres{font-size:13.5px;margin:0 0 12px;padding:0;list-style:none}.fres li{border-bottom:1px solid var(--line);padding:6px 0}
+.fres small{color:var(--sub)}
+.itbl td:nth-child(2),.itbl th:nth-child(2){text-align:left}
+.itbl td:nth-child(3),.itbl th:nth-child(3){text-align:right;white-space:nowrap}
+.itbl td{white-space:normal}.itbl details summary{cursor:pointer;color:var(--accent)}
+.itbl details ul{margin:6px 0 0;padding-left:1.1em;font-size:13px;color:var(--sub)}
+.chk{display:flex;flex-wrap:wrap;gap:6px 14px;margin:8px 0}.chk label{font-size:14px;display:flex;gap:6px;align-items:center}
+.ovl{background:var(--accent-soft);border-radius:10px;padding:10px 12px;font-size:14px;margin:6px 0 0}
+.ovl li{margin:2px 0}
 .cta{background:#f1f7f4;border:1px solid #cfe5dd;border-radius:12px;padding:18px;margin:18px 0}
 .cta a{color:var(--good);font-weight:700}
 footer{color:var(--sub);font-size:12.5px;border-top:1px solid var(--line);margin-top:30px;padding-block:22px 40px}
@@ -202,6 +218,21 @@ footer{color:var(--sub);font-size:12.5px;border-top:1px solid var(--line);margin
   <p class="note" id="feeNote"></p>
 </section>
 
+<?php if ($FMETA) { $cn = $FMETA['counts']; $asof = date('Y年n月j日', strtotime($FMETA['as_of'])); ?>
+<section class="card" aria-labelledby="funds-h" id="funds">
+  <h2 id="funds-h">3. つみたて投資枠の対象商品を、中身で見る</h2>
+  <p class="note">金融庁の一覧（<?= h($asof) ?>時点）では、つみたて投資枠で買える商品は、指数に連動する投資信託が<b><?= (int) $cn['index'] ?>本</b>、それ以外（アクティブ運用など）が<b><?= (int) $cn['active'] ?>本</b>、ETFが<b><?= (int) $cn['etf'] ?>本</b>です。<b>同じ指数に連動するファンドは、持っている中身がほぼ同じです。</b>違いは主に手数料（信託報酬）と運用会社で、手数料はこの一覧に載っていないため、各ファンドの目論見書で確かめてください。</p>
+  <div class="fsearch"><input type="search" id="fq" placeholder="ファンド名で探す（例: 全世界、S&amp;P、TOPIX）" aria-label="ファンド名で探す"></div>
+  <ul class="fres" id="fres"></ul>
+  <div class="tbl"><table class="itbl" id="itbl"><thead><tr><th>連動する指数</th><th>何を持つか</th><th>本数</th></tr></thead><tbody></tbody></table></div>
+  <h3 style="font-size:15px;margin:16px 0 0">持っている（持つ予定の）指数どうしの重なり</h3>
+  <p class="note" style="margin:2px 0 0">チェックを入れると、同じ地域の株を二重に持っていないかを示します。地域の分類は指数の定義にもとづくもので、構成比までは見ていません。</p>
+  <div class="chk" id="chk"></div>
+  <div class="ovl" id="ovl">指数を2つ以上選ぶと、ここに重なりが出ます。</div>
+  <p class="note" style="margin-top:10px;overflow-wrap:anywhere">出典：金融庁「つみたて投資枠対象商品届出一覧（対象資産別）」<a href="<?= h($FMETA['source']) ?>" rel="noopener"><?= h($FMETA['source']) ?></a>（<?= h($asof) ?>時点）を加工して作成。地域の分類は当社によるものです。</p>
+</section>
+<?php } ?>
+
 <section class="card" aria-labelledby="why-h">
   <h2 id="why-h">「利益が生まれる構造」を言葉にすると</h2>
   <p style="font-size:14.5px;margin:0 0 8px">NISAは商品ではなく、税金がかからない<b>口座の枠</b>です。何が増えるかは、枠の中で何を買うかで決まります。株式の投資信託なら、増える分の出どころは2つです。</p>
@@ -225,6 +256,7 @@ footer{color:var(--sub);font-size:12.5px;border-top:1px solid var(--line);margin
 </div></footer>
 
 <script><?= $CORE ?></script>
+<?php if ($FMETA) { ?><script>window.KNISA_FUNDS=<?= $FUNDS ?>;</script><?php } ?>
 <script>
 (function(){
 const K = window.KNISA, M = 10000;
@@ -288,6 +320,47 @@ function calcS(){
 }
 ['monthly','years','div','growth','fee','vol','draw'].forEach(id=>$(id).addEventListener('input',calcS));
 calcS();
+
+// 3. 対象商品を中身で見る（並びは名前順。成績や人気では並べない＝勧めない）
+const F = window.KNISA_FUNDS;
+if (F) {
+  const RL = {jp:'日本株',us:'米国株',dev:'先進国株',eu:'欧州株',em:'新興国株',all:'全世界株'};
+  const RD = {jp:'日本の株',us:'米国の株',dev:'日本以外も含む先進国の株（多くのファンドは日本を除く）',eu:'欧州の株',em:'新興国の株',all:'先進国と新興国の株（ふつう日本株も入る）'};
+  const esc = (t)=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const byIdx = {};
+  F.funds.forEach(f=>{ if(f.i){ (byIdx[f.i]=byIdx[f.i]||{r:f.r,list:[]}).list.push(f); } });
+  const bal = F.funds.filter(f=>f.k==='balance'), act = F.funds.filter(f=>f.t==='active');
+  const order = ['jp','us','dev','eu','em','all'];
+  const idxs = Object.keys(byIdx).sort((a,b)=>order.indexOf(byIdx[a].r)-order.indexOf(byIdx[b].r)||byIdx[b].list.length-byIdx[a].list.length);
+  const li = (f)=>`<li>${esc(f.n)} <small>${esc(f.c)}${f.t==='etf'?'・ETF':''}</small></li>`;
+  const byName=(a,b)=>a.n.localeCompare(b.n,'ja');
+  $('itbl').querySelector('tbody').innerHTML = idxs.map(k=>`<tr><td><details><summary>${esc(k)}</summary><ul>${byIdx[k].list.slice().sort(byName).map(li).join('')}</ul></details></td><td>${RL[byIdx[k].r]}<br><small style="color:var(--sub)">${RD[byIdx[k].r]}</small></td><td>${byIdx[k].list.length}本</td></tr>`).join('')
+    + `<tr><td><details><summary>複数の指数を組み合わせたもの（バランス型）</summary><ul>${bal.slice().sort(byName).map(f=>`<li>${esc(f.n)} <small>${esc(f.c)}・${f.ni}指数</small></li>`).join('')}</ul></details></td><td>株と債券などの組み合わせ<br><small style="color:var(--sub)">中身の内訳はこの一覧に無い</small></td><td>${bal.length}本</td></tr>`
+    + `<tr><td><details><summary>指数に連動しないもの（アクティブ運用など）</summary><ul>${act.slice().sort(byName).map(f=>`<li>${esc(f.n)} <small>${esc(f.c)}・${esc(f.dom)}・${esc(f.a)}</small></li>`).join('')}</ul></details></td><td>運用会社が銘柄を選ぶ<br><small style="color:var(--sub)">国内型・海外型と資産の区分だけ載っている</small></td><td>${act.length}本</td></tr>`;
+  const kind=(f)=>f.i?`${esc(f.i)}（${RL[f.r]}）`:(f.k==='balance'?`バランス型・${f.ni}指数`:`${esc(f.dom)}・${esc(f.a)}・アクティブ運用など`);
+  $('fq').addEventListener('input',()=>{
+    const q=$('fq').value.trim().toLowerCase();
+    if(q.length<1){ $('fres').innerHTML=''; return; }
+    const hit=F.funds.filter(f=>f.n.toLowerCase().includes(q)).sort(byName);
+    $('fres').innerHTML = hit.length ? `<li><small>${hit.length}本</small></li>`+hit.slice(0,40).map(f=>`<li>${esc(f.n)}<br><small>${esc(f.c)}／${kind(f)}</small></li>`).join('')+(hit.length>40?'<li><small>…ほか。もう少し絞ってください</small></li>':'')
+      : '<li><small>一覧に見つかりません。つみたて投資枠の対象でない商品かもしれません（成長投資枠の対象かどうかは別です）。</small></li>';
+  });
+  $('chk').innerHTML = idxs.map((k,i)=>`<label><input type="checkbox" value="${esc(k)}" id="ck${i}">${esc(k)}</label>`).join('');
+  const inside = {all:['jp','us','dev','eu','em'], dev:['us','eu']};
+  $('chk').addEventListener('change',()=>{
+    const sel=[...$('chk').querySelectorAll('input:checked')].map(c=>c.value);
+    if(sel.length<2){ $('ovl').textContent='指数を2つ以上選ぶと、ここに重なりが出ます。'; return; }
+    const msgs=[];
+    for(let i=0;i<sel.length;i++) for(let j=i+1;j<sel.length;j++){
+      const a=sel[i], b=sel[j], ra=byIdx[a].r, rb=byIdx[b].r;
+      if(ra===rb) msgs.push(`「${esc(a)}」と「${esc(b)}」は、どちらも${RL[ra]}です。中身の多くが重なります。`);
+      else if((inside[ra]||[]).includes(rb)) msgs.push(`「${esc(a)}」（${RL[ra]}）の中にも${RL[rb]}が入っています。「${esc(b)}」を別に持つと、${RL[rb]}の比重がその分上がります。`);
+      else if((inside[rb]||[]).includes(ra)) msgs.push(`「${esc(b)}」（${RL[rb]}）の中にも${RL[ra]}が入っています。「${esc(a)}」を別に持つと、${RL[ra]}の比重がその分上がります。`);
+    }
+    $('ovl').innerHTML = msgs.length ? '<ul style="margin:0;padding-left:1.1em">'+msgs.map(m=>`<li>${m}</li>`).join('')+'</ul><p style="margin:6px 0 0;font-size:13px;color:var(--sub)">重なっていること自体は悪いことではありません。意図して比重を上げているのか、知らずに二重に持っているのかを確かめるためのものです。</p>'
+      : '選んだ指数どうしは、持っている地域が分かれています。';
+  });
+}
 })();
 </script>
 </body></html>
