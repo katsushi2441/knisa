@@ -21,11 +21,41 @@
 
 売却は「売った商品の簿価（買ったときの金額）」で入れます。売却代金ではありません。
 
+## 置き方（自社・事務所のサイトに）
+
+1. `knisa.php` と `knisa-core.js` を同じ場所に置く（PHP 8 が動く共有サーバーでよい。DBは使わない）
+2. `knisa-config.sample.php` を `knisa-config.php` に写して、社名・ロゴ・色・相談先を書き換える
+3. 設定が無いと、社名もロゴも出さず、アクセス計測もしない素の画面になる
+
+入力された取引はブラウザの中だけで計算し、サーバーへは送りません。
+
+## AIアシスタントから使う（MCP）
+
+`knisa_mcp.php` は、AIアシスタントが NISA の枠の質問に、記憶ではなく制度どおりの計算で答えるための
+MCP サーバーです（stdio・PHP 1枚・書き込みと外部通信なし）。
+
+```bash
+claude mcp add knisa -- php /path/to/knisa_mcp.php
+```
+
+| ツール | 答えること |
+|---|---|
+| `nisa_rules` | 枠のルール（出典つき） |
+| `nisa_check_waku` | 取引履歴から、年ごとの残り・翌年に使える生涯の枠・復活額・上限超過 |
+| `nisa_frame_fill` | 毎月の積立額が年間枠のどこに入るか、生涯の枠が何年で埋まるか |
+| `nisa_fee_gap` | 信託報酬の違いで将来いくら差が出るか（商品の推奨はしない） |
+
+「売ったらその年の枠も戻る」「売った年のうちに生涯枠を使える」といった、よくある間違いを計算で正せます。
+
 ## 構成
 
 - `knisa.php` … 画面（PHP 1枚。heteml などの共有サーバーにそのまま置ける）
-- `knisa-core.js` … 計算（画面とテストで同じものを使う）。入力はブラウザの外に出さない
+- `knisa-core.js` … 画面の計算。`knisa-core.php` … 同じ計算の PHP 版（MCP が使う）
+- `knisa_mcp.php` … MCP サーバー
+- `knisa-config.sample.php` … 設定の見本
 - `tests/core.test.js` … 制度のルールを手で計算した答えと突き合わせる（`node tests/core.test.js`）
+- `tests/parity.test.php` … PHP 版と JS 版の答えが一致するか（`php tests/parity.test.php`）
+- `tests/mcp.test.py` … MCP を stdio で叩く（`python3 tests/mcp.test.py`）
 - `make_ogp.py` … OGP画像（1200×630）
 
 ## 試算について
