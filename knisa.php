@@ -8,25 +8,54 @@
  * 答えないこと: どの商品を買うべきか（特定の商品は勧めない）。
  *
  * 計算は knisa-core.js にまとめ、tests/core.test.js で制度のルールと突き合わせてある。
- * 計測は kurage.exbridge.jp/simpletrack.php に集約する（proto の他のデモと同じ。include しない）。
+ * 社名・色・計測タグは knisa-config.php に書く（本体に置く会社の情報を持たない）。
  */
 date_default_timezone_set('Asia/Tokyo');
 $CORE = @file_get_contents(__DIR__ . '/knisa-core.js') ?: '';
-$URL = 'https://proto.exbridge.jp/knisa.php';
-$TITLE = '新NISAシミュレーション｜枠の残りと復活を計算';
-$DESC = '新しいNISAの枠があといくら使えるか、売った分が翌年いくら復活するかを、取引を入れて計算します。積立の試算は「配当＋企業の利益の伸び−手数料」から幅で出します。特定の商品は勧めません。株式会社エクスブリッジ（名古屋）。';
 function h($s) { return htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8'); }
 
-$LD = ['@context' => 'https://schema.org', '@graph' => [
-  ['@type' => 'Organization', '@id' => 'https://exbridge.jp/#organization', 'name' => '株式会社エクスブリッジ',
-   'url' => 'https://exbridge.jp/', 'logo' => 'https://exbridge.jp/images/logo-mark-128.png',
-   'identifier' => ['@type' => 'PropertyValue', 'propertyID' => '法人番号', 'value' => '4180001056508']],
-  ['@type' => 'WebApplication', '@id' => $URL . '#app', 'name' => 'Kurage NISA 枠計算・試算', 'url' => $URL,
+/*
+ * 置く会社ごとの設定。knisa-config.php があれば読む（knisa-config.sample.php を写して使う）。
+ * 無ければ社名もロゴも出さない素の画面になり、**アクセス計測は一切しない**。
+ * 当社のデモ（proto.exbridge.jp）だけが、自分の knisa-config.php で計測を有効にしている。
+ */
+$C = [
+    'site_url'      => '',                 // この画面の正式なURL（canonical・OGP）。空なら出さない
+    'brand_name'    => '',                 // 左上の名前
+    'brand_url'     => '',                 // 左上の名前のリンク先
+    'logo_url'      => '',                 // 左上のロゴ（正方形）
+    'accent'        => '#1f6f9f',          // 見出しとボタンの色
+    'og_image'      => '',                 // OGP画像（1200x630）
+    'mascot_url'    => '',                 // 題の横の絵（空なら出さない）
+    'contact_url'   => '',                 // 下の相談ボタンのリンク先（空なら案内ごと出さない）
+    'contact_label' => '相談する',
+    'contact_text'  => '',                 // 相談ボタンの上の一文
+    'org_ld'        => null,               // 構造化データの Organization（配列）。無ければ出さない
+    'head_extra'    => '',                 // <head> の最後に足すもの（計測タグなど）
+    'body_extra'    => '',                 // <body> の最初に足すもの
+    'header_links'  => [],                 // 右上のリンク [['文字', 'URL'], ...]
+    'footer_extra'  => '',                 // フッターの最後の行（会社名など）
+];
+if (is_file(__DIR__ . '/knisa-config.php')) {
+    $over = include __DIR__ . '/knisa-config.php';
+    if (is_array($over)) { $C = array_merge($C, $over); }
+}
+if (!preg_match('/^#[0-9a-fA-F]{6}$/', $C['accent'])) { $C['accent'] = '#1f6f9f'; }
+$URL = $C['site_url'];
+$TITLE = '新NISAシミュレーション｜枠の残りと復活を計算';
+$DESC = '新しいNISAの枠があといくら使えるか、売った分が翌年いくら復活するかを、取引を入れて計算します。積立の試算は「配当＋企業の利益の伸び−手数料」から幅で出します。特定の商品は勧めません。'
+      . ($C['brand_name'] !== '' ? $C['brand_name'] . '。' : '');
+
+$APP = ['@type' => 'WebApplication', 'name' => 'NISA 枠計算・試算',
    'applicationCategory' => 'FinanceApplication', 'operatingSystem' => 'All', 'inLanguage' => 'ja',
    'isAccessibleForFree' => true, 'offers' => ['@type' => 'Offer', 'price' => '0', 'priceCurrency' => 'JPY'],
-   'publisher' => ['@id' => 'https://exbridge.jp/#organization'],
-   'description' => '新しいNISAの年間投資枠・非課税保有限度額（簿価）の残りと、売却した分が翌年に復活する額を計算する。積立の試算を仮定から幅で出す。'],
-  ['@type' => 'FAQPage', '@id' => $URL . '#faq', 'mainEntity' => [
+   'description' => '新しいNISAの年間投資枠・非課税保有限度額（簿価）の残りと、売却した分が翌年に復活する額を計算する。積立の試算を仮定から幅で出す。'];
+if ($URL !== '') { $APP['url'] = $URL; $APP['@id'] = $URL . '#app'; }
+if (is_array($C['org_ld'])) { $APP['publisher'] = ['@id' => $C['org_ld']['@id'] ?? '']; }
+$LD = ['@context' => 'https://schema.org', '@graph' => array_values(array_filter([
+  is_array($C['org_ld']) ? $C['org_ld'] : null,
+  $APP,
+  ['@type' => 'FAQPage', 'mainEntity' => [
     ['@type' => 'Question', 'name' => 'NISAで売った分の枠は、いつ復活しますか。',
      'acceptedAnswer' => ['@type' => 'Answer', 'text' => '売った年の翌年以降に、売った商品の簿価（買ったときの金額）の分だけ非課税保有限度額（1,800万円）が復活します。売った年のうちには使えません。']],
     ['@type' => 'Question', 'name' => '売ったら、その年の年間投資枠も戻りますか。',
@@ -34,26 +63,24 @@ $LD = ['@context' => 'https://schema.org', '@graph' => [
     ['@type' => 'Question', 'name' => '2023年までのNISAで持っている分は、新しい枠に含まれますか。',
      'acceptedAnswer' => ['@type' => 'Answer', 'text' => '含まれません。2023年までのNISAの保有分は外枠で管理され、売っても新しいNISAの枠は復活しません。']],
   ]],
-]];
+]))];
 ?><!doctype html>
 <html lang="ja"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title><?= h($TITLE) ?></title>
 <meta name="description" content="<?= h($DESC) ?>">
-<link rel="canonical" href="<?= h($URL) ?>">
+<?php if ($URL !== '') { ?><link rel="canonical" href="<?= h($URL) ?>"><meta property="og:url" content="<?= h($URL) ?>"><?php } ?>
 <meta name="robots" content="index,follow,max-image-preview:large">
-<meta property="og:type" content="website"><meta property="og:site_name" content="株式会社エクスブリッジ">
-<meta property="og:locale" content="ja_JP">
+<meta property="og:type" content="website"><meta property="og:locale" content="ja_JP">
+<?php if ($C['brand_name'] !== '') { ?><meta property="og:site_name" content="<?= h($C['brand_name']) ?>"><?php } ?>
 <meta property="og:title" content="<?= h($TITLE) ?>">
 <meta property="og:description" content="<?= h($DESC) ?>">
-<meta property="og:url" content="<?= h($URL) ?>">
-<meta property="og:image" content="https://proto.exbridge.jp/knisa-ogp.png">
+<?php if ($C['og_image'] !== '') { ?><meta property="og:image" content="<?= h($C['og_image']) ?>">
 <meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:image" content="https://proto.exbridge.jp/knisa-ogp.png">
+<meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="<?= h($C['og_image']) ?>"><?php } ?>
 <script type="application/ld+json"><?= json_encode($LD, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?></script>
 <style>
-:root{--ink:#1b2530;--sub:#5f6c78;--line:#dfe5ea;--accent:#1f6f9f;--accent-soft:#e7f1f8;--good:#1a7a5e;--warn:#b4412f;
+:root{--ink:#1b2530;--sub:#5f6c78;--line:#dfe5ea;--accent:<?= h($C['accent']) ?>;--accent-soft:#e7f1f8;--good:#1a7a5e;--warn:#b4412f;
  --bg:#f7f9fb;--panel:#fff;--band:#cfe3f1}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);line-height:1.8;
@@ -106,21 +133,21 @@ footer{color:var(--sub);font-size:12.5px;border-top:1px solid var(--line);margin
 @media(max-width:640px){h1{font-size:21px}.hero img{width:64px}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
 </style>
-<script>(function(){var s=document.createElement('script');s.src='https://kurage.exbridge.jp/simpletrack.php?url='+encodeURIComponent(location.href)+'&ref='+encodeURIComponent(document.referrer);s.async=true;document.head.appendChild(s)})();</script>
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-BP0650KDFR"></script>
-<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-BP0650KDFR');</script>
+<?= $C['head_extra'] ?>
 </head><body>
-<img src="https://kurage.exbridge.jp/simpletrack.php?t=img&url=https://proto.exbridge.jp/knisa.php" width="1" height="1" alt="" aria-hidden="true" style="position:absolute;left:-9999px">
+<?= $C['body_extra'] ?>
+<?php if ($C['brand_name'] !== '' || $C['header_links']) { ?>
 <header class="top"><div class="wrap">
-  <a class="brand" href="https://exbridge.jp/"><img src="https://exbridge.jp/images/logo-mark-128.png" width="34" height="34" alt="株式会社エクスブリッジ"><b>株式会社エクスブリッジ</b></a>
-  <a class="more" href="https://proto.exbridge.jp/">デモ一覧へ</a>
+  <?php if ($C['brand_name'] !== '') { ?><a class="brand" href="<?= h($C['brand_url'] ?: '#') ?>"><?php if ($C['logo_url'] !== '') { ?><img src="<?= h($C['logo_url']) ?>" width="34" height="34" alt="<?= h($C['brand_name']) ?>"><?php } ?><b><?= h($C['brand_name']) ?></b></a><?php } ?>
+  <?php foreach ($C['header_links'] as $i => $l) { ?><a class="more" href="<?= h($l[1]) ?>"<?= $i ? ' style="margin-left:14px"' : '' ?>><?= h($l[0]) ?></a><?php } ?>
 </div></header>
+<?php } ?>
 
 <main class="wrap">
 <div class="hero">
-  <img src="https://kurage.exbridge.jp/images/kurage-mascot-cutout.png" width="92" height="92" alt="">
+  <?php if ($C['mascot_url'] !== '') { ?><img src="<?= h($C['mascot_url']) ?>" width="92" height="92" alt=""><?php } ?>
   <div>
-    <h1><a href="<?= h($URL) ?>" style="color:inherit;text-decoration:none">新NISAの枠はいくら残っている？ 売った分はいつ戻る？</a></h1>
+    <h1><a href="<?= h($URL ?: '?') ?>" style="color:inherit;text-decoration:none">新NISAの枠はいくら残っている？ 売った分はいつ戻る？</a></h1>
     <p class="lead">取引を入れると、年間投資枠と生涯の枠（簿価で1,800万円）の残り、売った分が翌年に復活する額を、制度のとおりに計算します。後半では、積み立てがどのくらいの幅で増えるかと、その「増える分」がどこから来るのかを試算します。</p>
   </div>
 </div>
@@ -182,18 +209,19 @@ footer{color:var(--sub);font-size:12.5px;border-top:1px solid var(--line);margin
   <p style="font-size:14.5px;margin:0">反対に、配当も利益もない資産は、値上がりの理由が「後から買う人がいること」だけになります。何に投資するにしても、「この利益はどこから来るのか」を一文で言えるかどうかを確かめてから買うのが、いちばん確実な見分け方です。</p>
 </section>
 
+<?php if ($C['contact_url'] !== '') { ?>
 <section class="cta">
-  <b>この計算を、自社や事務所のサイトに置けます。</b>
-  <p style="font-size:14px;margin:6px 0 0">社内のNISA説明会、税理士・FPの相談窓口、金融機関の顧客向けページ向けに、名前と色を差し替えて置ける形にしています。計算はブラウザの中で完結し、入力した取引は外に送りません。
-  <a href="https://exbridge.jp/contact.php?ref=proto-knisa">導入について相談する</a>／<a href="https://proto.exbridge.jp/?ref=proto-knisa">ほかのデモを触る</a></p>
+  <?= $C['contact_text'] ?>
+  <p style="font-size:14px;margin:8px 0 0"><a href="<?= h($C['contact_url']) ?>"><?= h($C['contact_label']) ?></a></p>
 </section>
+<?php } ?>
 
 <p class="note">このページは制度の計算と、置いた仮定による試算です。特定の金融商品の購入を勧めるものではありません。実際の枠の残りは、口座のある金融機関の表示で確認してください。</p>
 </main>
 
 <footer><div class="wrap">
-  制度の出典：金融庁「NISAを知る」「NISA特設ウェブサイト よくある質問」（2026年9月27日確認）。試算は入力した仮定にもとづく計算で、将来の運用成果を示すものではありません。<br>
-  株式会社エクスブリッジ（名古屋）
+  制度の出典：金融庁「NISAを知る」「NISA特設ウェブサイト よくある質問」（2026年9月27日確認）。試算は入力した仮定にもとづく計算で、将来の運用成果を示すものではありません。
+  <?= $C['footer_extra'] !== '' ? '<br>' . $C['footer_extra'] : '' ?>
 </div></footer>
 
 <script><?= $CORE ?></script>
