@@ -383,4 +383,5 @@ if (F) {
 }
 })();
 </script>
+<?php /* 再販パートナー募集の枠（中身は kurage_web/partner-bar.js）。当社の公開先でだけ読む */ if (($_SERVER['HTTP_HOST'] ?? '') === 'proto.exbridge.jp'): ?><script src=https://kurage.exbridge.jp/partner-bar.js defer></script><?php endif; ?>
 </body></html>
